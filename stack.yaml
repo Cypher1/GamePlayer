@@ -1,0 +1,7 @@
+flags: {}
+extra-package-dbs: []
+packages:
+- .
+extra-deps:
+- sized-vector-0.0.1.1
+resolver: lts-9.3
