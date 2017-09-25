@@ -1,7 +1,8 @@
 module Game
 ( gameLoop
+, Reward
 , Policy (Policy)
-, Player (Player, policy, pid)
+, Player (Player, policy, pid, update)
 , Game
 , GameState
 , GameActors
@@ -21,8 +22,6 @@ import Control.Monad (unless)
 
 type Reward = Double
 
-data PlayerID = X | O deriving (Show, Eq, Enum, Bounded)
-
 class GameState state where
   gameInit :: state
   gameFinished :: state -> Maybe String
@@ -31,15 +30,30 @@ class GameActors idT state where
   gameCanAct :: state -> [idT]
   gameReward :: state -> idT -> Reward
 
-class (GameActors idT state, Bounded idT, Enum idT, GameState state) => Game idT state action where
-  gameUpdate :: (idT, action) -> state -> state
+-- | s = state
+-- | a = action
+-- | idT = player ID
+class (Bounded idT, Enum idT, GameActors idT s, GameState s, Show s, Eq s, Show a, Read a, Bounded a, Enum a) => Game idT s a where
+  gameUpdate :: (idT, a) -> s -> s
 
 newtype Policy idT state action = Policy (idT -> state -> IO action)
 
-data Player idT state action = Player {policy :: Policy idT state action, pid :: idT}
+data Player idT state action =
+  Player { policy :: Policy idT state action
+         , update :: idT -> Player idT state action -> state -> Player idT state action
+         , pid :: idT
+         }
 
 instance Show idT => Show (Player idT state action) where
   show player = "Player: " ++ show (pid player)
+
+updatePlayer :: Game idT state action => state -> Player idT state action -> Player idT state action
+updatePlayer g p = updater p g
+  where
+    updater = update p (pid p)
+
+updatePlayers :: Game idT state action => state -> (idT -> Player idT state action) -> idT -> Player idT state action
+updatePlayers game players id = updatePlayer game $ players id
 
 getAction :: Game idT state action => Player idT state action -> state -> IO action
 getAction player = pol (pid player)
@@ -57,4 +71,4 @@ gameLoop game players = do
   let game' = foldr gameUpdate game actions'
   case gameFinished game' of
     Just output -> putStrLn output
-    Nothing -> gameLoop game' players
+    Nothing -> gameLoop game' $ updatePlayers game' players

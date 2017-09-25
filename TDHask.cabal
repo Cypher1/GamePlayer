@@ -18,6 +18,7 @@ library
   exposed-modules:     Game
                      , NaughtsAndCrosses
                      , TDLearner
+                     , BasePlayers
   build-depends:       base >= 4.7 && < 5
                      , sized-vector
                      , containers
@@ -31,7 +32,7 @@ library
                     , ScopedTypeVariables
                     , AllowAmbiguousTypes
 
-executable TDHask-exe
+executable main
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
@@ -39,6 +40,15 @@ executable TDHask-exe
                      , TDHask
   default-language:    Haskell2010
   default-extensions: FlexibleContexts
+  default-extensions: TypeFamilies
+                    , MultiParamTypeClasses
+                    , PolyKinds
+                    , TypeInType
+                    , FlexibleInstances
+                    , FlexibleContexts
+                    , ScopedTypeVariables
+                    , AllowAmbiguousTypes
+
 
 test-suite TDHask-test
   type:                exitcode-stdio-1.0
