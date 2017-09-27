@@ -12,6 +12,7 @@ import Game
   , Game
   , GameState
   , GameActors
+  , GameAction
   , gameUpdate
   , gameReward
   , gameInit
@@ -49,6 +50,8 @@ instance Show State where
       (Board (a, b, c)) = board s
 
 data Action = Action TripIndex TripIndex deriving (Show, Eq, Read, Bounded)
+
+instance GameAction Action
 
 instance Enum Action where
   fromEnum (Action x y) = fromEnum x * 3 + fromEnum y

@@ -1,11 +1,12 @@
 module Game
 ( gameLoop
 , Reward
-, Policy (Policy)
-, Player (Player, policy, pid, update)
+, Model (update, init)
+, Player (policy)
 , Game
 , GameState
 , GameActors
+, GameAction
 , gameInit
 , gameFinished
 , gameCanAct
@@ -19,56 +20,45 @@ import Data.Vector.Sized (Vector)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Control.Monad (unless)
+import Control.Applicative ((<*>), (<$>))
 
 type Reward = Double
 
-class GameState state where
+class (Show state, Eq state) => GameState state where
   gameInit :: state
   gameFinished :: state -> Maybe String
 
-class GameActors idT state where
+class (Bounded idT, Enum idT, Eq idT) => GameActors idT state where
   gameCanAct :: state -> [idT]
   gameReward :: state -> idT -> Reward
+
+class (Show a, Read a, Bounded a, Enum a) => GameAction a
 
 -- | s = state
 -- | a = action
 -- | idT = player ID
-class (Bounded idT, Enum idT, GameActors idT s, GameState s, Show s, Eq s, Show a, Read a, Bounded a, Enum a) => Game idT s a where
+class (GameActors idT s, GameState s, GameAction a) => Game idT s a where
   gameUpdate :: (idT, a) -> s -> s
 
-newtype Policy idT state action = Policy (idT -> state -> IO action)
+class Model model idT state where
+  update :: model -> idT -> state -> model
+  update model pid' game = model
+  init :: idT -> model
+  init id' = undefined
 
-data Player idT state action =
-  Player { policy :: Policy idT state action
-         , update :: idT -> Player idT state action -> state -> Player idT state action
-         , pid :: idT
-         }
+class (Game idT state action, Model model idT state) => Player model idT state action where
+  policy :: model -> idT -> state -> IO action
 
-instance Show idT => Show (Player idT state action) where
-  show player = "Player: " ++ show (pid player)
+updatePlayers :: (Model model idT state) => state -> (idT -> model) -> idT -> model
+updatePlayers game players id = update (players id) id game
 
-updatePlayer :: Game idT state action => state -> Player idT state action -> Player idT state action
-updatePlayer g p = updater p g
-  where
-    updater = update p (pid p)
+getAct :: Player model idT state action => state -> (idT -> model) -> action -> idT -> IO (idT, action)
+getAct game players actT id' = (\act -> (id', act)) <$> policy (players id') id' game
 
-updatePlayers :: Game idT state action => state -> (idT -> Player idT state action) -> idT -> Player idT state action
-updatePlayers game players id = updatePlayer game $ players id
-
-getAction :: Game idT state action => Player idT state action -> state -> IO action
-getAction player = pol (pid player)
-  where
-    Policy pol = policy player
-
-getAct :: Game idT s a => s -> Player idT s a -> IO (idT, a)
-getAct game p = do
-  act <- getAction p game
-  return (pid p, act)
-
-gameLoop :: (Game idT s a) => s -> (idT -> Player idT s a) -> IO ()
-gameLoop game players = do
-  actions' <- mapM (getAct game. players) $ gameCanAct game
+gameLoop :: (Player model idT state action) => state -> (idT -> model) -> action -> IO ()
+gameLoop game players actT = do
+  actions' <- mapM (getAct game players actT) $ gameCanAct game
   let game' = foldr gameUpdate game actions'
   case gameFinished game' of
     Just output -> putStrLn output
-    Nothing -> gameLoop game' $ updatePlayers game' players
+    Nothing -> gameLoop game' (updatePlayers game' players) actT
