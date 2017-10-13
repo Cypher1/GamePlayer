@@ -35,6 +35,8 @@ library
                     , TypeInType
                     , GADTs
                     , ExistentialQuantification
+                    , DeriveAnyClass
+                    , StandaloneDeriving
 
 executable main
   hs-source-dirs:      app
@@ -55,6 +57,8 @@ executable main
                     , TypeInType
                     , GADTs
                     , ExistentialQuantification
+                    , DeriveAnyClass
+                    , StandaloneDeriving
 
 
 test-suite TDHask-test

@@ -9,36 +9,30 @@ import qualified Data.HashMap.Strict as HashMap
 
 import Game
   ( Reward
-  , gameLoop
-  , gameReward
-  , gameUpdate
-  , Model (update, init)
-  , Player (policy)
-  , Game
-  , GameActors
+  , State (start, finished)
+  , MutableState (update)
+  , Action
+  , Problem (possible)
+  , Id
+  , Agent (policy)
+  , TurnBased (turn)
+  , Game (reward)
   )
 
-newtype ReinforcePlayer state = ReinforcePlayer (HashMap state Reward)
+newtype ReinforcePlayer state = ReinforcePlayer (HashMap state Reward) deriving (Show, Eq)
 
-instance Model (ReinforcePlayer state) idT state where
-  update = updateGreedy
-  init id' = ReinforcePlayer HashMap.empty
-instance (Game idT state action) => Player (ReinforcePlayer state) idT state action where
-  policy = greedyReinforcement
+instance (Show state, Eq state) => State (ReinforcePlayer state) where
+  start = ReinforcePlayer HashMap.empty
 
-greedyReinforcement :: Game idT s a => model -> idT -> s -> IO a
-greedyReinforcement  model pid state = do
-  let possibles = filter (canDo pid state) actions
-  if null possibles
-      then error ("FAILED TO FIND MOVE IN STATE: "++show state)
-      else return $ head possibles
+instance (Show problem, Eq problem) => MutableState (ReinforcePlayer problem) (problem, Reward) where
+  update (ReinforcePlayer map) (problem, reward) = ReinforcePlayer map -- TODO Update the map
 
-updateGreedy :: ReinforcePlayer state -> idT -> state -> ReinforcePlayer state
-updateGreedy model pid' game = model
-
-canDo :: Game idT s a => idT -> s -> a -> Bool
-canDo pid state act = state /= gameUpdate (pid, act) state
+instance (Problem problem action) => Agent problem action (ReinforcePlayer problem) where
+  policy (ReinforcePlayer map) problem = do
+    let possibles = filter (possible problem) actions -- TODO sort by values in map
+    if null possibles
+        then error ("FAILED TO FIND MOVE IN STATE: "++show problem)
+        else return $ head possibles
 
 actions :: (Bounded a, Enum a) => [a]
 actions = [minBound..maxBound]
-

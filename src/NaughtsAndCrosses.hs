@@ -1,72 +1,44 @@
 module NaughtsAndCrosses
-( gameInit
-, gameReward
-, gameUpdate
-, State
-, Action
-, PlayerID (..)
+( GState
+, GAction
+, GID (..)
 ) where
 
 import Game
-  ( gameLoop
-  , Game
-  , GameState
-  , GameActors
-  , GameAction
-  , gameUpdate
-  , gameReward
-  , gameInit
-  , gameFinished
-  , gameCanAct
+  ( Reward
+  , State (start, finished)
+  , MutableState (update)
+  , Action
+  , Problem (possible)
+  , Id
+  , Agent (policy)
+  , TurnBased (turn)
+  , Game (reward)
   )
 
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isNothing)
 
-data PlayerID = X | O deriving (Show, Eq, Enum, Bounded)
+data GID = X | O deriving (Show, Eq, Enum, Bounded, Read)
+instance Id GID
 
-newtype Space = Space (Maybe PlayerID) deriving Eq
+data GState = GState { board :: Board, currPlayer :: GID } deriving (Eq)
+instance TurnBased GID GState where
+  turn = currPlayer
 
-instance Show Space where
-  show (Space (Just X)) = "X"
-  show (Space (Just O)) = "O"
-  show (Space Nothing) = "_"
-
-type Trip a = (a, a, a)
-
-data TripIndex = A | B | C deriving (Show, Eq, Read, Enum, Bounded)
-
-same :: Eq a => Trip a -> Bool
-same (a, b, c) = (a == b) && (b == c) && (c == a)
-
-newtype Board = Board (Trip (Trip Space)) deriving (Show, Eq)
-
-data State = State { board :: Board, currPlayer :: PlayerID } deriving (Eq)
-
-instance Show State where
+instance Show GState where
   show s = "Current Player: "++show (currPlayer s)++"\n"++board'
     where
       board' = show' a++"\n"++show' b++"\n"++show' c
       show' (x, y, z) = show x++" "++show y++" "++show z
       (Board (a, b, c)) = board s
 
-data Action = Action TripIndex TripIndex deriving (Show, Eq, Read, Bounded)
-
-instance GameAction Action
-
-instance Enum Action where
-  fromEnum (Action x y) = fromEnum x * 3 + fromEnum y
-  toEnum n = Action x y
-    where
-    x = toEnum (n `div` 3)
-    y = toEnum (n `mod` 3)
-
-instance GameState State where
-  gameInit = State { board = startBoard, currPlayer = X }
+instance State GState where
+  start = GState { board = startBoard, currPlayer = X }
     where
     startBoard = Board (initTrip (initTrip (Space Nothing)))
 
   -- | Returns a finishMessage :: Maybe String (Nothing == not finished)
-  gameFinished state =
+  finished state =
     case getWinner (board state) of
       (Just winner) -> Just (show state++"\nCongratulations player "++show winner)
       Nothing -> draw'
@@ -74,17 +46,39 @@ instance GameState State where
         draw' | full (board state) = Just (show state++"\nGame drawn")
               | otherwise = Nothing
 
-instance GameActors PlayerID State where
-  gameCanAct state = [currPlayer state]
-  gameReward game player
+data GAction = GAction TripIndex TripIndex deriving (Show, Eq, Read, Bounded)
+instance Enum GAction where
+  fromEnum (GAction x y) = fromEnum x * 3 + fromEnum y
+  toEnum n = GAction x y
+    where
+    x = toEnum (n `div` 3)
+    y = toEnum (n `mod` 3)
+instance Action GAction
+
+instance MutableState GState GAction where
+  update = updateBoard
+
+instance Problem GState GAction
+
+instance Game GState GID GAction where
+  reward game player _
     | isNothing (getWinner (board game)) = 0.5
     | getWinner (board game) == Just player = 1
     | otherwise = 0
 
-instance Game PlayerID State Action where
-  gameUpdate (player, action) game
-    | player == currPlayer game = updateBoard game (player, action)
-    | otherwise = game
+newtype Space = Space (Maybe GID) deriving Eq
+instance Show Space where
+  show (Space (Just X)) = "X"
+  show (Space (Just O)) = "O"
+  show (Space Nothing) = "_"
+
+type Trip a = (a, a, a)
+data TripIndex = A | B | C deriving (Show, Eq, Read, Enum, Bounded)
+
+same :: Eq a => Trip a -> Bool
+same (a, b, c) = (a == b) && (b == c) && (c == a)
+
+newtype Board = Board (Trip (Trip Space)) deriving (Show, Eq)
 
 rows :: Board -> [Trip Space]
 rows (Board (a, b, c)) = [a,b,c]
@@ -114,10 +108,10 @@ updateTrip p f (a, b, c)
   | p == B = (a, f b, c)
   | p == C = (a, b, f c)
 
-updateBoard :: State -> (PlayerID, Action) -> State
-updateBoard game (player, Action x y) =
+updateBoard :: GState -> GAction -> GState
+updateBoard game (GAction x y) =
   case getTrip y (getTrip x board') of
-    Space Nothing -> State { board = update x y (Space (Just player)), currPlayer = nextPlayer}
+    Space Nothing -> GState { board = update x y (Space (Just (currPlayer game))), currPlayer = nextPlayer}
     _ -> game
   where
     Board board' = board game
@@ -131,10 +125,10 @@ updateBoard game (player, Action x y) =
 full :: Board -> Bool
 full (Board b) = all (notElem (Space Nothing) . toList) $ toList b
 
-getWinner :: Board -> Maybe PlayerID
+getWinner :: Board -> Maybe GID
 getWinner board = foldr winner Nothing wins
   where
     wins = rows board++cols board++diags board
-    winner :: Trip Space -> Maybe PlayerID -> Maybe PlayerID
+    winner :: Trip Space -> Maybe GID -> Maybe GID
     winner trip@(Space a, _, _) Nothing | same trip = a
     winner _ x = x
