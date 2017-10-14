@@ -1,8 +1,8 @@
-name:                TDHask
+name:                GamePlayer
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/Cypher1/TDHask#readme
+homepage:            https://github.com/Cypher1/GamePlayer#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Joshua Pratt
