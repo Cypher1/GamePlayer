@@ -5,6 +5,7 @@ import NaughtsAndCrosses
 import BasePlayers
 import TDLearner
 
+import System.IO
 import Text.Read (readMaybe)
 import Control.Monad (when)
 import Data.Maybe (fromMaybe)
@@ -16,6 +17,7 @@ players t
 
 main :: IO ()
 main = do
+  hSetBuffering stdout NoBuffering
   --players' <- runGame players 10000
   putStrLn "Time to play"
   --let playersWithUser idT = if idT == minBound
