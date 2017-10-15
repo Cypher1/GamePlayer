@@ -2,6 +2,7 @@ module NaughtsAndCrosses
 ( GState
 , GAction
 , GID (..)
+, getWinner
 ) where
 
 import Game
@@ -16,17 +17,17 @@ import Game
   , Game (reward)
   )
 
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 
-data GID = X | O deriving (Show, Eq, Enum, Bounded, Read)
+data GID = X | O deriving (Show, Eq, Enum, Bounded, Read, Ord)
 instance Id GID
 
-data GState = GState { board :: Board, currPlayer :: GID } deriving (Eq)
+data GState = GState { board :: Board, currPlayer :: GID } deriving (Eq, Ord)
 instance TurnBased GID GState where
   turn = currPlayer
 
 instance Show GState where
-  show s = "Current Player: "++show (currPlayer s)++"\n"++board'
+  show s = "\nCurrent Player: "++show (currPlayer s)++"\n"++board'++"\n"++ show ( finished s)
     where
       board' = show' a++"\n"++show' b++"\n"++show' c
       show' (x, y, z) = show x++" "++show y++" "++show z
@@ -35,24 +36,16 @@ instance Show GState where
 instance State GState where
   start = GState { board = startBoard, currPlayer = X }
     where
-    startBoard = Board (initTrip (initTrip (Space Nothing)))
+      startBoard = Board (initTrip (initTrip (Space Nothing)))
+  finished state = isJust (getWinner state) || full (board state) -- either there is a winner, a draw or the game continues
 
-  -- | Returns a finishMessage :: Maybe String (Nothing == not finished)
-  finished state =
-    case getWinner (board state) of
-      (Just winner) -> Just (show state++"\nCongratulations player "++show winner)
-      Nothing -> draw'
-      where
-        draw' | full (board state) = Just (show state++"\nGame drawn")
-              | otherwise = Nothing
-
-data GAction = GAction TripIndex TripIndex deriving (Show, Eq, Read, Bounded)
+data GAction = GAction TripIndex TripIndex GID deriving (Show, Eq, Read, Bounded, Ord)
 instance Enum GAction where
-  fromEnum (GAction x y) = fromEnum x * 3 + fromEnum y
-  toEnum n = GAction x y
+  fromEnum (GAction x y idT) = fromEnum (idT, (x, y))
+  toEnum n = GAction x y idT
     where
-    x = toEnum (n `div` 3)
-    y = toEnum (n `mod` 3)
+      (idT, (x, y)) = toEnum n
+
 instance Action GAction
 
 instance MutableState GState GAction where
@@ -62,23 +55,23 @@ instance Problem GState GAction
 
 instance Game GState GID GAction where
   reward game player _
-    | isNothing (getWinner (board game)) = 0.5
-    | getWinner (board game) == Just player = 1
+    | isNothing (getWinner game) = 0.5
+    | getWinner game == Just player = 1
     | otherwise = 0
 
-newtype Space = Space (Maybe GID) deriving Eq
+newtype Space = Space (Maybe GID) deriving (Eq, Ord)
 instance Show Space where
   show (Space (Just X)) = "X"
   show (Space (Just O)) = "O"
   show (Space Nothing) = "_"
 
 type Trip a = (a, a, a)
-data TripIndex = A | B | C deriving (Show, Eq, Read, Enum, Bounded)
+data TripIndex = A | B | C deriving (Show, Eq, Read, Enum, Bounded, Ord)
 
 same :: Eq a => Trip a -> Bool
 same (a, b, c) = (a == b) && (b == c) && (c == a)
 
-newtype Board = Board (Trip (Trip Space)) deriving (Show, Eq)
+newtype Board = Board (Trip (Trip Space)) deriving (Show, Eq, Ord)
 
 rows :: Board -> [Trip Space]
 rows (Board (a, b, c)) = [a,b,c]
@@ -109,7 +102,9 @@ updateTrip p f (a, b, c)
   | p == C = (a, b, f c)
 
 updateBoard :: GState -> GAction -> GState
-updateBoard game (GAction x y) =
+updateBoard game (GAction x y idT)
+  | idT /= currPlayer game = game -- error $ "Player "++show idT++" cannot play not, it is "++show (currPlayer game) ++ "'s turn."
+  | otherwise =
   case getTrip y (getTrip x board') of
     Space Nothing -> GState { board = update x y (Space (Just (currPlayer game))), currPlayer = nextPlayer}
     _ -> game
@@ -125,10 +120,11 @@ updateBoard game (GAction x y) =
 full :: Board -> Bool
 full (Board b) = all (notElem (Space Nothing) . toList) $ toList b
 
-getWinner :: Board -> Maybe GID
-getWinner board = foldr winner Nothing wins
+getWinner :: GState -> Maybe GID
+getWinner game = foldr winner Nothing wins
   where
-    wins = rows board++cols board++diags board
+    board' = board game
+    wins = rows board'++cols board'++diags board'
     winner :: Trip Space -> Maybe GID -> Maybe GID
     winner trip@(Space a, _, _) Nothing | same trip = a
     winner _ x = x

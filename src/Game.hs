@@ -14,24 +14,24 @@ where
 
 type Reward = Double
 
-class (Show a, Read a, Bounded a, Enum a, Eq a) => Action a
+class (Show a, Read a, Bounded a, Enum a, Eq a, Ord a) => Action a
 
 instance (Enum a, Enum b, Bounded b) => Enum (a,b) where
   fromEnum (a, b) = a'*bRange+b'
     where
       a' = fromEnum a
       b' = fromEnum b
-      bRange = fromEnum (maxBound::b) - fromEnum (minBound::b)
+      bRange = fromEnum (maxBound::b) - fromEnum (minBound::b) + 1
   toEnum c = (toEnum div', toEnum mod')
     where
       div' = c `div` bRange
       mod' = c `mod` bRange
-      bRange = fromEnum (maxBound::b) - fromEnum (minBound::b)
+      bRange = fromEnum (maxBound::b) - fromEnum (minBound::b) + 1
 
 class (Show state, Eq state) => State state where
   start :: state
-  finished :: state -> Maybe String
-  finished _ = Nothing
+  finished :: state -> Bool
+  finished _ = False
 
 class (State state) => MutableState state updateT where
   update :: state -> updateT-> state
@@ -43,7 +43,7 @@ class (MutableState state action, Action action) => Problem state action where
 
 class (Show idT, Read idT, Bounded idT, Enum idT, Eq idT) => Id idT
 
-class (MutableState agentState (problemState, Reward), Problem problemState action) => Agent problemState action agentState where
+class (MutableState agentState (problemState, action, Reward), Problem problemState action) => Agent problemState action agentState where
   policy :: agentState -> problemState -> IO action
 
 class (Id idT) => TurnBased idT state where
@@ -52,25 +52,22 @@ class (Id idT) => TurnBased idT state where
 class (TurnBased idT pState, Problem pState action) => Game pState idT action where
   reward :: pState -> idT -> action -> Reward
   updateAgents :: (Agent pState action aState) => pState -> (idT -> aState) -> idT -> IO (pState, idT -> aState, action)
-  updateAgents game players idT = do
-      action <- policy agent game
-      let game' = update game action
-      let agent' = update agent (game', reward game' idT action)
-      return (game', players' agent', action)
+  updateAgents game players idT = updateAgents' <$> policy agent game
     where
       agent = players idT
-      players' agent' idT'
-        | idT' == idT = agent'
-        | otherwise = players idT'
+      updateAgents' action = (game', players', action)
+        where
+          game' = update game action
+          players' idT'
+            | idT' == idT = update agent (game, action, reward game' idT action)
+            | otherwise = players idT'
 
-  gameLoop :: (Agent pState action aState) => pState -> (idT -> aState) -> IO (String, [action])
-  gameLoop game players = do
-    (game', players', action) <- updateAgents game players $ turn game
-    case finished game' of
-      Just output -> return (output, [])
-      Nothing -> do
-        (output, otherActions) <- gameLoop game' players'
-        return (output, action:otherActions)
+  gameLoop :: (Agent pState action aState) => pState -> (idT -> aState) -> IO (pState, idT -> aState, [action])
+  gameLoop game players = if finished game
+      then return (game, players, [])
+      else do
+        (game', players', action) <- updateAgents game players $ turn game
+        (\(g, p, otherActions) -> (g, p, action:otherActions)) <$> gameLoop game' players'
 
 
 data GamePlayer game action = forall agent. (Agent game action agent) => GP agent
@@ -83,7 +80,8 @@ instance Eq (GamePlayer g a) where
 instance State (GamePlayer game action) where
   start = error "Cannot default initialise a generic game player"
 
-deriving instance MutableState (GamePlayer game action) (game, Reward)
+instance MutableState (GamePlayer game action) (game, action, Reward) where
+  update (GP agent) = GP . update agent
 
 instance (Problem game action) => Agent game action (GamePlayer game action) where
   policy (GP agent) = policy agent

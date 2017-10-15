@@ -24,7 +24,8 @@ actions = [minBound..maxBound]
 promptFor :: Read a => String -> String -> IO a
 promptFor prompt fail = do
   putStrLn prompt
-  line <- getLine
+  line' <- getLine
+  let line = "GAction "++line'++" X"
   case readMaybe line of
     Just x -> return x
     Nothing -> putStrLn fail >> promptFor prompt fail
@@ -33,7 +34,7 @@ promptFor prompt fail = do
 data User = User deriving (Show, Read, Eq)
 instance State User where
   start = User
-instance MutableState User (problem, Reward)
+instance MutableState User (problem, action, Reward)
 instance (Action action, Problem problem action) => Agent problem action User where
   policy _ problem = do
     print problem
@@ -43,18 +44,18 @@ instance (Action action, Problem problem action) => Agent problem action User wh
 data DoAnyPlayer = DoAnyPlayer deriving (Show, Read, Eq)
 instance State DoAnyPlayer where
   start = DoAnyPlayer
-instance MutableState DoAnyPlayer (problem, Reward) where
+instance MutableState DoAnyPlayer (problem, action, Reward) where
 instance (Problem problem action) => Agent problem action DoAnyPlayer where
   policy _ problem = do
     let possibles = filter (possible problem) actions
     if null possibles
-        then error ("FAILED TO FIND MOVE IN STATE: "++show problem)
+       then error ("FAILED TO FIND MOVE IN STATE (DoAnyPlayer): "++show problem)
         else return $ head possibles
 
 data DoAnyOpportunePlayer = DoAnyOpportunePlayer deriving (Show, Read, Eq)
 instance State DoAnyOpportunePlayer where
   start = DoAnyOpportunePlayer
-instance MutableState DoAnyOpportunePlayer (problem, Reward) where
+instance MutableState DoAnyOpportunePlayer (problem, action, Reward) where
 instance (Problem problem action) => Agent problem action DoAnyOpportunePlayer where
   policy _ problem = do
     let possibles = filter (possible problem) actions
