@@ -22,12 +22,23 @@ import Game
   , Game (reward)
   )
 
-data ReinforcePlayer state action = ReinforcePlayer (Map state (Map action Reward)) Double deriving (Show, Eq)
+data ReinforcePlayer state idT action = ReinforcePlayer (Map state (Map action Reward)) Double deriving (Show, Eq)
 
-instance (Show state, Eq state, Show action, Eq action) => State (ReinforcePlayer state action) where
-  start = ReinforcePlayer Map.empty 0
+instance (Bounded state, Enum state, Show state, Eq state, Show action, Eq action, Enum action, Bounded action, Ord state, Game state idT action) => State (ReinforcePlayer state idT action) where
+  start = train start' 20
+    where
+      start' = ReinforcePlayer Map.empty 0
+      train :: ReinforcePlayer state idT action -> Integer -> ReinforcePlayer state idT action
+      train p 0 = p
+      train p n = train p' (n-1)
+        where
+          p' = foldl trainOnProblem p $ filter (not.finished) [minBound..maxBound]
+          trainOnProblem :: (Problem problem action, Bounded problem, Ord problem, Game problem idT action, Enum problem) => ReinforcePlayer problem idT action -> problem -> ReinforcePlayer problem idT action
+          trainOnProblem agent problem = foldl (trainOnProblemAction problem) agent $ filter (possible problem) [minBound..maxBound]
+          trainOnProblemAction :: (Problem problem action, Enum problem, Bounded problem, Ord problem, Game problem idT action) => problem -> ReinforcePlayer problem idT action -> action -> ReinforcePlayer problem idT action
+          trainOnProblemAction problem agent action = update agent (problem, action, reward problem (turn problem::idT) action)
 
-instance (Ord problem, Ord action, Problem problem action, Action action) => MutableState (ReinforcePlayer problem action) (problem, action, Reward) where
+instance (Bounded problem, Enum problem, Ord problem, Ord action, Problem problem action, Action action, Game problem idT action) => MutableState (ReinforcePlayer problem idT action) (problem, action, Reward) where
   update player@(ReinforcePlayer states totalReward) (problem, action, reward) = ReinforcePlayer states' totalReward -- TODO Update the map
     where
       problem' = update problem action
@@ -43,17 +54,19 @@ instance (Ord problem, Ord action, Problem problem action, Action action) => Mut
       reward' = (1-learningRate) * getReward player problem action + learningRate* (reward +  discount * nextReward')
       nextReward' :: Reward
       nextReward'
-        | null rewards = 0.5
+        | null rewards = 0
         | otherwise = maximum rewards
         where
           rewards = map (getReward player problem') $ filter (possible problem') [minBound..maxBound]
 
-instance (Ord problem, Ord action, Problem problem action) => Agent problem action (ReinforcePlayer problem action) where
+instance (Bounded problem, Enum problem, Ord problem, Ord action, Problem problem action, Action action, Game problem idT action) => Agent problem action (ReinforcePlayer problem idT action) where
   -- policy :: agentState -> problemState -> IO action
   policy player@(ReinforcePlayer stateMap totalReward) problem =
     if null ordered
       then error ("FAILED TO FIND MOVE IN STATE (ReinforcePlayer): "++show problem)
-      else return $ head ordered
+      else do
+        print $ map (\a -> (a, getReward player problem a)) ordered
+        return $ head ordered
     where
       ordered :: [action]
       ordered = sortWith (getReward player problem) possibles
@@ -61,7 +74,7 @@ instance (Ord problem, Ord action, Problem problem action) => Agent problem acti
           possibles :: [action]
           possibles = filter (possible problem) actions
 
-getReward :: (Ord problem, Ord action, Problem problem action) => ReinforcePlayer problem action -> problem -> action -> Reward
+getReward :: (Ord problem, Ord action, Problem problem action) => ReinforcePlayer problem idT action -> problem -> action -> Reward
 getReward (ReinforcePlayer stateMap _) problem action = fromMaybe 1 $ Map.lookup action actionMap
   where
     actionMap = fromMaybe Map.empty $ Map.lookup problem stateMap -- TODO Store the default in the player as a parameter

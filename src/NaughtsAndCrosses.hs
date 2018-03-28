@@ -22,7 +22,12 @@ import Data.Maybe (isJust, isNothing)
 data GID = X | O deriving (Show, Eq, Enum, Bounded, Read, Ord)
 instance Id GID
 
-data GState = GState { board :: Board, currPlayer :: GID } deriving (Eq, Ord)
+data GState = GState { board :: Board, currPlayer :: GID } deriving (Eq, Ord, Bounded)
+instance Enum GState where
+  fromEnum b = fromEnum (board b, currPlayer b)
+  toEnum n = GState { board = board', currPlayer = currPlayer'}
+    where
+      (board', currPlayer') = toEnum n
 instance TurnBased GID GState where
   turn = currPlayer
 
@@ -55,23 +60,54 @@ instance Problem GState GAction
 
 instance Game GState GID GAction where
   reward game player _
-    | isNothing (getWinner game) = 0.5
+    | isNothing (getWinner game) = 0
     | getWinner game == Just player = 1
-    | otherwise = 0
+    | otherwise = -1
 
 newtype Space = Space (Maybe GID) deriving (Eq, Ord)
+
+instance Enum Space where
+  fromEnum (Space x) = fromEnum x
+  toEnum n = Space (toEnum n)
+instance Bounded Space where
+  minBound = Space minBound
+  maxBound = Space maxBound
+
+instance (Enum a) => Enum (Maybe a) where
+  fromEnum Nothing = 0
+  fromEnum (Just id) = fromEnum id + 1
+  toEnum 0 = Nothing
+  toEnum n = Just $ toEnum (n-1)
+
+instance (Bounded a) => Bounded (Maybe a) where
+  minBound = Nothing
+  maxBound = Just maxBound
+
 instance Show Space where
   show (Space (Just X)) = "X"
   show (Space (Just O)) = "O"
   show (Space Nothing) = "_"
 
 type Trip a = (a, a, a)
+
+instance (Bounded a, Enum a) => Enum (Trip a) where
+  fromEnum (a1, a2, a3) = fromEnum (a1, (a2, a3))
+  toEnum n = (a1, a2, a3)
+    where
+      (a1, (a2, a3)) = toEnum n
+
 data TripIndex = A | B | C deriving (Show, Eq, Read, Enum, Bounded, Ord)
 
 same :: Eq a => Trip a -> Bool
 same (a, b, c) = (a == b) && (b == c) && (c == a)
 
 newtype Board = Board (Trip (Trip Space)) deriving (Show, Eq, Ord)
+instance Enum Board where
+  fromEnum (Board trip) = fromEnum trip
+  toEnum n = Board (toEnum n)
+instance Bounded Board where
+  minBound = Board minBound
+  maxBound = Board maxBound
 
 rows :: Board -> [Trip Space]
 rows (Board (a, b, c)) = [a,b,c]

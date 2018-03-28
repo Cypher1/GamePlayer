@@ -13,7 +13,7 @@ import Data.Maybe (fromMaybe)
 players :: GID -> GamePlayer GState GAction
 players t
   | t == minBound = GP (start :: User) -- ReinforcePlayer GState GAction)
-  | otherwise = GP (start :: ReinforcePlayer GState GAction)
+  | otherwise = GP (start :: ReinforcePlayer GState GID GAction)
 
 main :: IO ()
 main = do
